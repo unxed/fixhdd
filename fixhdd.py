@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 This script automatically re-writes sectors where
@@ -38,6 +38,8 @@ Use Ctrl+C to stop fixhdd.py.
 Changelog:
     Revision 1.1: Fix --loop causing unary function to be called without arguments
     Revision 1.2: Fix hardcoded /dev/sda, various small improvements & fixes ; fix active scan
+    Revision 1.3: Python3 ready
+    Revision 1.4: Python3 fixes, fix bad/missing sense data & unusable logging
 """
 import subprocess
 import time
@@ -48,7 +50,7 @@ import sys
 __author__ = "Uli Köhler"
 __copyright__ = "Copyright 2015-2016 Uli Koehler"
 __license__ = "Apache License v2.0"
-__version__ = "1.2"
+__version__ = "1.4"
 __maintainer__ = "Uli Köhler"
 __email__ = "ukoehler@techoverflow.net"
 __status__ = "Development"
@@ -71,7 +73,13 @@ def getBadSectors(device):
 
 def isSectorBad(device, sector):
     try:
-        subprocess.check_output('hdparm --read-sector %d %s' % (sector, device), shell=True, stderr=None)
+        output = subprocess.check_output('hdparm --read-sector %d %s' % (sector, device), shell=True, stderr=subprocess.STDOUT)
+        output = output.decode("utf-8")
+        # Special case: process succeeds but with error message:
+        # SG_IO: bad/missing sense data
+        if "bad/missing sense data" in output:
+            return True
+        # Else: Success => sector is not bad
         return False
     except:
         return True
@@ -81,19 +89,21 @@ def resetSectorHDParm(device, sector):
     """Write to a sector using hdparm only if reading it yields a HDD error"""
     #Will throw exception on non-zero exit code
     if isSectorBad(device, sector):
-        print ("Sector %d is damaged, rewriting..." % sector)
+        print(("Sector %d is damaged, rewriting..." % sector))
         #Maaan, this is VERY DANGEROUS!
         #Really, no kidding. Might even make things worse.
         #It could work, but it probably doesn't. Ever.
         #Don't use if your data is worth a single dime to you.
         out = subprocess.check_output('hdparm --write-sector  %d --yes-i-know-what-i-am-doing %s' % (sector, device), shell=True)
-        print (out)
+        out = out.decode("utf-8")
+        if "succeeded" not in out:
+            print (red(out.decode("utf-8").replace("\n")))
     else:
-        print ("Sector %d is OK, ignoring" % sector)
+        print(("Sector %d is OK, ignoring" % sector))
   
 def fixBadSectors(device, badSectors):
     "One-shot fixing of bad sectors"
-    print ("Checking/Fixing %d sectors" % len(badSectors))
+    print(("Checking/Fixing %d sectors" % len(badSectors)))
     [resetSectorHDParm(device, sector) for sector in badSectors]
       
 def checkDmesgBadSectors(device, knownGoodSectors):
@@ -110,7 +120,7 @@ def checkDmesgBadSectors(device, knownGoodSectors):
 def loopCheckForBadSectors(device):
     knownGoodSectors = set()
     while True:
-        print "Waiting 5 seconds (hit Ctrl+C to interrupt)..."
+        print("Waiting 5 seconds (hit Ctrl+C to interrupt)...")
         time.sleep(5)
         #Try again after timeout
         checkDmesgBadSectors(device, knownGoodSectors)
@@ -124,13 +134,13 @@ def getNumberOfSectors(device):
     #Line like: 255 heads, 63 sectors/track, 60801 cylinders, total 976773168 sectors
     sectorsLine = subprocess.check_output("LANG=C fdisk -l {0} 2>/dev/null | grep ^Disk | grep sectors".format(device), shell=True)
     print(sectorsLine)
-    return int(sectorsLine.strip().split(" ")[-2])
+    return int(sectorsLine.strip().split(b" ")[-2])
 
 def performActiveSectorScan(device, offset=0, n=1000):
     "Check all sectors on the hard drive for errors and fix them."
-    print("Performing active sector scan of {0} starting at {1}").format(device, offset)
-    print(getNumberOfSectors(device))
-    for i in xrange(offset, min(getNumberOfSectors(device), offset + n)):
+    print(("Performing active sector scan of {0} starting at {1}").format(device, offset))
+    print((getNumberOfSectors(device)))
+    for i in range(offset, min(getNumberOfSectors(device), offset + n)):
         #Reset sector (only if it is damaged)
         resetSectorHDParm(device, i)
 
@@ -149,7 +159,7 @@ if __name__ == "__main__":
     if not isBlockDevice(args.device):
         print("Error: device argument must be a block device")
         sys.exit(1)
-    print ("Trying to fix bad sectors on %s" % args.device)
+    print(("Trying to fix bad sectors on %s" % args.device))
     # Always perform one-shot test
     checkDmesgBadSectors(args.device, set())
     # Fix manually added bad sector list
