@@ -108,14 +108,19 @@ def fixBadSectors(device, badSectors):
       
 def checkDmesgBadSectors(device, knownGoodSectors):
     #Grab sector list from dmesg
-    dmesgBadSectors = set(getBadSectors(device))
-    dmesgBadSectors.difference_update(knownGoodSectors)
-    if len(dmesgBadSectors) == 0:
-        print ("No new sector errors found in syslog :-)")
-        #Update set of sectors which are known to be good
-    else:
-        fixBadSectors(device, dmesgBadSectors)
-        knownGoodSectors.update(dmesgBadSectors)
+    devices=device
+    if type(device) != type([]):
+        devices=[device]
+
+    for device in devices:
+       dmesgBadSectors = set(getBadSectors(device))
+       dmesgBadSectors.difference_update(knownGoodSectors)
+       if len(dmesgBadSectors) == 0:
+           print ("No new sector errors found in syslog for device %s:-)" % device)
+           #Update set of sectors which are known to be good
+       else:
+           fixBadSectors(device, dmesgBadSectors)
+           knownGoodSectors.update(dmesgBadSectors)
 
 def loopCheckForBadSectors(device):
     knownGoodSectors = set()
@@ -155,17 +160,27 @@ if __name__ == "__main__":
     parser.add_argument("-n", default=1000, type=int, help="For active scan, the number of blocks to scan")
     parser.add_argument("device", default="/dev/sda", help="The device to use")
     args = parser.parse_args()
-    #Check if the given device is a block device after all
-    if not isBlockDevice(args.device):
+
+    if args.device != "all":
+     #Check if the given device is a block device after all
+     if not isBlockDevice(args.device):
         print("Error: device argument must be a block device")
         sys.exit(1)
-    print(("Trying to fix bad sectors on %s" % args.device))
-    # Always perform one-shot test
-    checkDmesgBadSectors(args.device, set())
-    # Fix manually added bad sector list
-    fixBadSectors(args.device, args.sector)
-    # Active sector scan
-    if args.active_scan:
+     print(("Trying to fix bad sectors on %s" % args.device))
+     # Always perform one-shot test
+     checkDmesgBadSectors(args.device, set())
+     # Fix manually added bad sector list
+     fixBadSectors(args.device, args.sector)
+     # Active sector scan
+     if args.active_scan:
         performActiveSectorScan(args.device, args.offset, args.n)
+
     # If enabled, loop-check
-    if args.loop: loopCheckForBadSectors(args.device)
+    if args.loop:
+        if args.device == "all":
+           out = subprocess.check_output("/usr/bin/lsscsi  | awk '{print $(NF)}' | grep -v '\-'", shell=True)
+           out = out.decode("utf-8").split()
+           loopCheckForBadSectors(out)
+        else:
+           loopCheckForBadSectors(args.device)
+
