@@ -60,8 +60,8 @@ def getBadSectors(device):
     "Parse a list of recently read bad sectors from the syslog"
     #TODO this gets ALL bad sectors from ALL devices, not only the selected device
     try:
-        out = subprocess.check_output('grep "end_request: I/O error" /var/log/syslog', shell=True)
-        for line in out.split("\n"):
+        out = str(subprocess.check_output('egrep "end_request: I/O error|print_req_error: I/O error" /var/log/syslog', shell=True))
+        for line in out.replace('\\n','\n').replace("'",'').split("\n"):
             line = line.strip()
             if not line: continue
             sector = int(line.rpartition(" ")[2])
@@ -89,7 +89,7 @@ def resetSectorHDParm(device, sector):
     """Write to a sector using hdparm only if reading it yields a HDD error"""
     #Will throw exception on non-zero exit code
     if isSectorBad(device, sector):
-        print(("Sector %d is damaged, rewriting..." % sector))
+        print(("Sector %d (%s) is damaged, rewriting..." % (sector, device)))
         #Maaan, this is VERY DANGEROUS!
         #Really, no kidding. Might even make things worse.
         #It could work, but it probably doesn't. Ever.
@@ -99,7 +99,7 @@ def resetSectorHDParm(device, sector):
         if "succeeded" not in out:
             print (red(out.decode("utf-8").replace("\n")))
     else:
-        print(("Sector %d is OK, ignoring" % sector))
+        print(("Sector %d (%s) is OK, ignoring" % (sector,device)))
   
 def fixBadSectors(device, badSectors):
     "One-shot fixing of bad sectors"
