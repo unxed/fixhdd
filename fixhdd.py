@@ -129,7 +129,7 @@ def getBadSectors(device):
     "Parse a list of recently read bad sectors from the syslog"
     #TODO this gets ALL bad sectors from ALL devices, not only the selected device
     try:
-        out = str(subprocess.check_output('egrep "end_request: I/O error|print_req_error: I/O error" /var/log/syslog', shell=True))
+        out = str(subprocess.check_output('egrep "end_request: I/O error|print_req_error: I/O error" /var/log/syslog | grep %s' % device.split('/')[-1], shell=True))
         for line in out.replace('\\n','\n').replace("'",'').split("\n"):
             line = line.strip()
             if not line: continue
@@ -197,12 +197,16 @@ def checkDmesgBadSectors(device, knownGoodSectors, feedback=True):
 
 def loopCheckForBadSectors(device, feedback=True):
     knownGoodSectors = set()
+    devices=device
+    if type(device) != type([]):
+        devices=[device]
     while True:
         if feedback == True:
             print("Waiting 5 seconds (hit Ctrl+C to interrupt)...")
         time.sleep(5)
         #Try again after timeout
-        checkDmesgBadSectors(device, knownGoodSectors, feedback)
+        for device in devices:
+            checkDmesgBadSectors(device, knownGoodSectors, feedback)
 
 def isBlockDevice(filename):
     "Return if the given filename represents a valid block device"
@@ -259,7 +263,7 @@ if __name__ == "__main__":
            if input(DISCLAIMER2) == 'Yes I am sure!':
                print( "OK... Brave soul! good luck!! running..." )
                out = subprocess.check_output("/usr/bin/lsscsi  | awk '{print $(NF)}' | grep -v '\-'", shell=True)
-               out = out.decode("utf-8").split()
+               out = [ x.strip() for x in out.decode("utf-8").split('\n') if len(x.strip()) != 0 ]
                # when running as "all", don't spit out idle messages.
                loopCheckForBadSectors(out, feedback=False)
            else:
